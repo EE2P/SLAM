@@ -63,21 +63,21 @@
     "CallService!reset": {
       "requestPayload": "{}",
       "layout": "vertical",
-      "serviceName": "/rtabmap/reset",
+      "serviceName": "/rtabmap/rtabmap/reset",
       "buttonText": "重置建图",
       "buttonColor": "#c0392b"
     },
     "CallService!pause": {
       "requestPayload": "{}",
       "layout": "vertical",
-      "serviceName": "/rtabmap/pause",
+      "serviceName": "/rtabmap/rtabmap/pause",
       "buttonText": "暂停建图",
       "buttonColor": "#e67e22"
     },
     "CallService!resume": {
       "requestPayload": "{}",
       "layout": "vertical",
-      "serviceName": "/rtabmap/resume",
+      "serviceName": "/rtabmap/rtabmap/resume",
       "buttonText": "继续建图",
       "buttonColor": "#27ae60"
     },
