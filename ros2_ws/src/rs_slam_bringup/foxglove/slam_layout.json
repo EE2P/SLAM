@@ -1,0 +1,122 @@
+{
+  "configById": {
+    "3D!slam3d": {
+      "cameraState": {
+        "perspective": true,
+        "distance": 8,
+        "phi": 60,
+        "thetaOffset": 45,
+        "targetOffset": [0, 0, 0],
+        "target": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "followTf": "map",
+      "scene": {
+        "enableStats": false
+      },
+      "transforms": {
+        "frame:map": { "visible": true },
+        "frame:odom": { "visible": true },
+        "frame:camera_link": { "visible": true }
+      },
+      "topics": {
+        "/rtabmap/cloud_map": {
+          "visible": true,
+          "pointSize": 2,
+          "colorField": "z",
+          "colorMode": "colormap",
+          "colorMap": "turbo"
+        },
+        "/rtabmap/mapPath": {
+          "visible": true,
+          "lineWidth": 0.05,
+          "color": "#ff4dff"
+        },
+        "/map": {
+          "visible": true,
+          "colorMode": "map",
+          "alpha": 0.5
+        },
+        "/rtabmap/localization_pose": { "visible": true }
+      },
+      "publish": {
+        "type": "point",
+        "poseTopic": "/move_base_simple/goal",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose"
+      }
+    },
+    "Image!color": {
+      "imageMode": {
+        "imageTopic": "/camera/camera/color/image_raw"
+      }
+    },
+    "Image!depth": {
+      "imageMode": {
+        "imageTopic": "/camera/camera/aligned_depth_to_color/image_raw"
+      }
+    },
+    "CallService!reset": {
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "serviceName": "/rtabmap/reset",
+      "buttonText": "重置建图",
+      "buttonColor": "#c0392b"
+    },
+    "CallService!pause": {
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "serviceName": "/rtabmap/pause",
+      "buttonText": "暂停建图",
+      "buttonColor": "#e67e22"
+    },
+    "CallService!resume": {
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "serviceName": "/rtabmap/resume",
+      "buttonText": "继续建图",
+      "buttonColor": "#27ae60"
+    },
+    "RawMessages!info": {
+      "topicPath": "/rtabmap/info"
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": { "speed": 1 },
+  "layout": {
+    "direction": "row",
+    "first": "3D!slam3d",
+    "second": {
+      "direction": "column",
+      "first": {
+        "direction": "row",
+        "first": "Image!color",
+        "second": "Image!depth",
+        "splitPercentage": 50
+      },
+      "second": {
+        "direction": "row",
+        "first": {
+          "direction": "column",
+          "first": "CallService!reset",
+          "second": {
+            "direction": "column",
+            "first": "CallService!pause",
+            "second": "CallService!resume",
+            "splitPercentage": 50
+          },
+          "splitPercentage": 33
+        },
+        "second": "RawMessages!info",
+        "splitPercentage": 40
+      },
+      "splitPercentage": 55
+    },
+    "splitPercentage": 60
+  }
+}

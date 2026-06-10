@@ -4,7 +4,7 @@
   <name>d455_demo</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="test@todo.todo">test</maintainer>
+  <maintainer email="han.li124@imperial.ac.uk">test</maintainer>
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>

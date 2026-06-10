@@ -1,0 +1,12 @@
+# RTAB-Map 参数：D455 / D435i 共用部分。
+# 值必须是字符串（rtabmap 的参数接口要求）。
+RGBD/AngularUpdate: "0.05"        # 旋转超过该弧度才插入新节点
+RGBD/LinearUpdate: "0.05"         # 平移超过该米数才插入新节点
+RGBD/OptimizeFromGraphEnd: "false"
+Grid/RangeMax: "5.0"              # 占用栅格最大投影距离 (m)
+Grid/RayTracing: "true"
+Grid/3D: "false"                  # /map 输出 2D 占用栅格
+Reg/Force3DoF: "false"            # 手持建图，保留 6DoF
+Mem/IncrementalMemory: "true"     # 建图模式（localization 模式由 launch 参数切换）
+Odom/ResetCountdown: "1"          # 里程计丢失后 1 帧自动重置，手持更友好
+Vis/MinInliers: "12"

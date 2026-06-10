@@ -1,0 +1,3 @@
+# D455 专属 RTAB-Map 参数（95mm 长基线，中远距深度可信）
+Vis/MaxDepth: "6.0"
+Grid/RangeMax: "6.0"
