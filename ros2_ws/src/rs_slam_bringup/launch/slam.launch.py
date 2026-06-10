@@ -110,6 +110,7 @@ def setup_nodes(context, *args, **kwargs):
             package='rtabmap_odom',
             executable='rgbd_odometry',
             name='rgbd_odometry',
+            namespace='rtabmap',
             parameters=[{
                 'frame_id': 'camera_link',
                 'publish_tf': True,
@@ -130,6 +131,7 @@ def setup_nodes(context, *args, **kwargs):
             package='rtabmap_slam',
             executable='rtabmap',
             name='rtabmap',
+            namespace='rtabmap',
             parameters=[{
                 'frame_id': 'camera_link',
                 'subscribe_depth': True,

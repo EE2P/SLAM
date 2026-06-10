@@ -36,7 +36,7 @@
           "lineWidth": 0.05,
           "color": "#ff4dff"
         },
-        "/map": {
+        "/rtabmap/map": {
           "visible": true,
           "colorMode": "map",
           "alpha": 0.5

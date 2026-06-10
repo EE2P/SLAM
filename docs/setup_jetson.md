@@ -60,7 +60,7 @@ ros2 launch rs_slam_bringup slam.launch.py
 
 ```bash
 # 2D 栅格图 (pgm+yaml)
-ros2 run nav2_map_server map_saver_cli -f ~/SLAM/maps/room   # 需 nav2-map-server
+ros2 run nav2_map_server map_saver_cli -f ~/SLAM/maps/room --ros-args -r map:=/rtabmap/map   # 需 nav2-map-server
 # 或直接拷贝数据库
 cp ~/.ros/rtabmap.db ~/SLAM/maps/room.db
 ```
