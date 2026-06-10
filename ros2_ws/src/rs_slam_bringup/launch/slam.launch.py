@@ -26,6 +26,14 @@ RAW_IMU_TOPIC = '/camera/camera/imu'
 FILTERED_IMU_TOPIC = '/imu/data'
 
 
+def imu_supported():
+    """librealsense 的内核后端靠 hid_sensor_* 模块读 IMU；
+    L4T/Tegra 内核没编这些模块时 IMU 必然不可用。"""
+    return subprocess.run(
+        ['modinfo', 'hid_sensor_accel_3d'],
+        capture_output=True).returncode == 0
+
+
 def detect_camera_model():
     """通过 lsusb 的 Intel PID 识别插着的 RealSense 型号。"""
     try:
@@ -58,7 +66,14 @@ def setup_nodes(context, *args, **kwargs):
                 '请检查 USB 连接，或显式指定 camera_model:=d455|d435i')
     print(f'[rs_slam_bringup] camera model: {model}')
 
-    use_imu = context.launch_configurations['use_imu'].lower() == 'true'
+    use_imu_arg = context.launch_configurations['use_imu'].lower()
+    if use_imu_arg == 'auto':
+        use_imu = imu_supported()
+        if not use_imu:
+            print('[rs_slam_bringup] 内核缺少 hid_sensor_* 模块，'
+                  'IMU 不可用，使用纯 RGB-D 里程计')
+    else:
+        use_imu = use_imu_arg == 'true'
     localization = context.launch_configurations['localization'].lower() == 'true'
     delete_db = context.launch_configurations['delete_db'].lower() == 'true'
     serial_no = context.launch_configurations['serial_no']
@@ -170,8 +185,8 @@ def generate_launch_description():
             'serial_no', default_value='',
             description='多台相机同时插入时用序列号区分'),
         DeclareLaunchArgument(
-            'use_imu', default_value='true',
-            description='false 时退化为纯 RGB-D 里程计（IMU 权限问题时的逃生口）'),
+            'use_imu', default_value='auto',
+            description='auto=检测内核支持; true/false 强制开关 IMU'),
         DeclareLaunchArgument(
             'localization', default_value='false',
             description='true 时加载已有地图做定位，不再扩展地图'),

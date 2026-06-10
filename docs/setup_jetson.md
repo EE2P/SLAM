@@ -38,7 +38,7 @@ ros2 launch rs_slam_bringup slam.launch.py
 | 参数 | 默认 | 说明 |
 |---|---|---|
 | `camera_model` | `auto` | `auto` 按 USB PID 识别；可强制 `d455` / `d435i` |
-| `use_imu` | `true` | IMU 拿不到数据时设 `false` 退化为纯 RGB-D |
+| `use_imu` | `auto` | 自动检测内核 IMU 支持；可强制 `true`/`false`（本机 L4T 内核无 hid_sensor 模块，IMU 不可用）|
 | `delete_db` | `true` | 每次启动重新建图；设 `false` 续建 `~/.ros/rtabmap.db` |
 | `localization` | `false` | `true` = 加载已有地图做定位，不扩展地图 |
 | `serial_no` | 空 | 两台相机同时插时用序列号指定 |
