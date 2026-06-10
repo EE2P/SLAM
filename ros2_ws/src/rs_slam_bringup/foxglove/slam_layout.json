@@ -25,7 +25,7 @@
       },
       "topics": {
         "/rtabmap/cloud_map": {
-          "visible": true,
+          "visible": false,
           "pointSize": 2,
           "colorField": "z",
           "colorMode": "colormap",
@@ -52,12 +52,7 @@
     },
     "Image!color": {
       "imageMode": {
-        "imageTopic": "/camera/camera/color/image_raw"
-      }
-    },
-    "Image!depth": {
-      "imageMode": {
-        "imageTopic": "/camera/camera/aligned_depth_to_color/image_raw"
+        "imageTopic": "/camera/camera/color/image_raw/compressed"
       }
     },
     "CallService!reset": {
@@ -93,12 +88,7 @@
     "first": "3D!slam3d",
     "second": {
       "direction": "column",
-      "first": {
-        "direction": "row",
-        "first": "Image!color",
-        "second": "Image!depth",
-        "splitPercentage": 50
-      },
+      "first": "Image!color",
       "second": {
         "direction": "row",
         "first": {
