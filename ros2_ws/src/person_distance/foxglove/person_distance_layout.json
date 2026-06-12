@@ -1,0 +1,56 @@
+{
+  "configById": {
+    "Image!debug": {
+      "imageMode": {
+        "imageTopic": "/person_distances/debug_image"
+      }
+    },
+    "Plot!distance": {
+      "paths": [
+        {
+          "value": "/person_distances.persons[0].distance",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "person 0 distance (m)"
+        },
+        {
+          "value": "/person_distances.persons[1].distance",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "person 1 distance (m)"
+        }
+      ],
+      "minYValue": 0,
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 30
+    },
+    "RawMessages!persons": {
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "topicPath": "/person_distances"
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "row",
+    "first": "Image!debug",
+    "second": {
+      "direction": "column",
+      "first": "Plot!distance",
+      "second": "RawMessages!persons",
+      "splitPercentage": 50
+    },
+    "splitPercentage": 55
+  }
+}
