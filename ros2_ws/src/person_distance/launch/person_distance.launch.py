@@ -12,6 +12,13 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _default_model():
+    # Prefer the TensorRT engine when it has been exported on this machine
+    engine = os.path.expanduser('~/SLAM/models/yolo11n-seg.engine')
+    return engine if os.path.exists(engine) else os.path.expanduser(
+        '~/SLAM/models/yolo11n-seg.pt')
+
+
 def generate_launch_description():
     start_camera = LaunchConfiguration('start_camera')
     start_foxglove = LaunchConfiguration('start_foxglove')
@@ -21,9 +28,7 @@ def generate_launch_description():
         DeclareLaunchArgument('start_camera', default_value='true'),
         # Set to false when another stack (e.g. rs_slam_bringup) already runs the bridge
         DeclareLaunchArgument('start_foxglove', default_value='true'),
-        DeclareLaunchArgument(
-            'model',
-            default_value=os.path.expanduser('~/SLAM/models/yolo11n-seg.pt')),
+        DeclareLaunchArgument('model', default_value=_default_model()),
 
         Node(
             package='realsense2_camera',

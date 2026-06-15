@@ -98,7 +98,8 @@ class PersonDistanceNode(Node):
             device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
         self.get_logger().info(f'Loading {model_path} on {device} ...')
         model = YOLO(model_path)
-        model.to(device)
+        if model_path.endswith('.pt'):
+            model.to(device)  # exported models (.engine/.onnx) are device-bound already
         # Warm up so the first real frame is not slow
         model.predict(np.zeros((480, 640, 3), dtype=np.uint8), verbose=False)
         self.get_logger().info('Model ready')
