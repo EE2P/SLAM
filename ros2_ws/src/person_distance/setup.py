@@ -30,6 +30,7 @@ setup(
     entry_points={
         'console_scripts': [
             'person_distance_node = person_distance.person_distance_node:main',
+            'perception_benchmark = person_distance.benchmark_node:main',
         ],
     },
 )
