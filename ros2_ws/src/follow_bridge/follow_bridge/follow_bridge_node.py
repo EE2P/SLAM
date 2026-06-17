@@ -1,8 +1,8 @@
-"""ROS 2 follow bridge: lock one tracked person and publish a follow velocity.
+"""ROS 2 follow bridge: follow the nearest person and publish a follow velocity.
 
 Subscribes the Jetson detector's `/person_distances`
-(person_distance_msgs/PersonDistanceArray, carrying a stable `track_id`), locks onto
-ONE person via target_selector, runs the metric follow law
+(person_distance_msgs/PersonDistanceArray), picks the NEAREST valid person each frame
+via target_selector (no identity lock), runs the metric follow law
 (follow_bridge.metric_follow_law), and publishes:
 
     /cmd_vel                  geometry_msgs/Twist   linear.x (m/s) + angular.z (rad/s)
@@ -48,7 +48,7 @@ class FollowBridgeNode(Node):
         estop_topic = self.declare_parameter('estop_topic', '/follow_bridge/estop').value
         self.publish_rate_hz = float(self.declare_parameter('publish_rate_hz', 30.0).value)
         # Detections older than this are treated as "no candidates" so a dead detector
-        # makes the selector hold->search->stop instead of acting on a frozen frame.
+        # makes the selector search->idle instead of acting on a frozen frame.
         self.detection_timeout_s = float(
             self.declare_parameter('detection_timeout_s', 0.5).value)
         # Chassis sign flips applied at the /cmd_vel boundary, mirroring
@@ -60,19 +60,17 @@ class FollowBridgeNode(Node):
         # -- metric follow-law params (one ROS param per MetricFollowParams field) --
         self.p = self._declare_metric_params()
 
-        # -- target selector (lock/hold/search/stop) --
+        # -- target selector (follow nearest, no lock) --
         self.selector = TargetSelector(
             conf_min=self.p.CONF_MIN,
             max_range_m=self.p.MAX_RANGE_M,
             min_valid_depth_pixels=self.p.MIN_VALID_DEPTH_PIXELS,
-            lost_hold_s=float(self.declare_parameter('lost_hold_s', 0.5).value),
-            reacquire_s=float(self.declare_parameter('reacquire_s', 3.0).value),
+            search_timeout_s=float(self.declare_parameter('search_timeout_s', 2.0).value),
         )
 
         self._latest = []           # list[Candidate] from the most recent message
         self._latest_t = None       # node-clock seconds of that message
         self._estop = False
-        self._warned_no_track_id = False
 
         self.pub_cmd = self.create_publisher(Twist, cmd_vel_topic, 10)
         self.pub_hb = self.create_publisher(Header, heartbeat_topic, 10)
@@ -108,16 +106,11 @@ class FollowBridgeNode(Node):
     def _on_persons(self, msg: PersonDistanceArray):
         cands = []
         for person in msg.persons:
-            track_id = getattr(person, 'track_id', None)
-            if track_id is None:
-                track_id = -1
-                if not self._warned_no_track_id:
-                    self.get_logger().warn(
-                        'PersonDistance has no track_id field -> nobody is lockable. '
-                        'Rebuild person_distance_msgs with track_id (plan Part B1).')
-                    self._warned_no_track_id = True
+            # track_id is telemetry only now (selection is by nearest distance), so a
+            # missing field is harmless -> default to -1 without warning.
+            track_id = getattr(person, 'track_id', -1)
             cands.append(Candidate(
-                track_id=int(track_id),
+                track_id=int(track_id if track_id is not None else -1),
                 distance=float(person.distance),
                 pos_x=float(person.position.x),
                 pos_z=float(person.position.z),
@@ -155,7 +148,7 @@ class FollowBridgeNode(Node):
                 pixel_x=t.pixel_x, valid_depth_pixels=t.valid_depth_pixels, p=self.p)
         elif decision.action == SEARCH:
             linear, yaw = 0.0, self.p.RECOVERY_YAW * decision.last_seen_sign
-        else:  # HOLD or IDLE -> hold position
+        else:  # IDLE -> hold position
             linear, yaw = 0.0, 0.0
 
         self._publish(linear, yaw, decision.state)

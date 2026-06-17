@@ -1,6 +1,6 @@
 # follow_bridge
 
-Locks onto **one tracked person** from the Jetson `person_distance` detector and
+Follows the **nearest person** seen by the Jetson `person_distance` detector and
 publishes a **metric follow velocity** for a robot driver to realise. It is pure
 *following intent* — it does **not** do wheel mixing, arming, or balance. That keeps
 the vision loop decoupled from the robot's real-time/USB concerns and makes `/cmd_vel`
@@ -29,16 +29,17 @@ the downstream driver can treat a stale heartbeat as "bridge dead → stop".
   (meters) using real depth; yaw from the target's bearing `atan2(pos_x, pos_z)`. Forward
   is gated until the target is roughly centred; reverse is always allowed. If depth is
   missing/untrusted it falls back to pixel-offset yaw only (no forward).
-- **Target lock** (`follow_bridge.target_selector`, "search then stop"): auto-locks the
-  nearest valid person on start; keeps the lock through brief misses; on permanent loss it
-  holds → bounded search-yaw → **stops** (never auto-locks a stranger). Call `reset()` /
-  re-launch to re-acquire.
+- **Target selection** (`follow_bridge.target_selector`, "nearest person"): each frame
+  follows the **nearest valid person** (no identity lock); switches to a closer person
+  if one appears. When nobody valid is visible it does a brief search-yaw toward the
+  last-seen side for `search_timeout_s`, then holds. No permanent stop — following
+  resumes the instant a valid person reappears.
 
 ## Key parameters
 
 `desired_distance_m` (1.5), `stop_band_m` (0.2), `kp_linear_m`, `kp_yaw_bearing`,
 `max_linear`/`max_reverse`/`max_angular`, `recovery_yaw`, `conf_min`,
-`min_valid_depth_pixels`, `max_range_m`, `lost_hold_s`, `reacquire_s`,
+`min_valid_depth_pixels`, `max_range_m`, `search_timeout_s` (2.0),
 `drive_sign` (1.0), `yaw_sign` (**-1.0** — maps the law's yaw-right-positive to REP-103;
 confirm on-robot), `cmd_vel_topic`, `person_topic`, `publish_rate_hz`.
 

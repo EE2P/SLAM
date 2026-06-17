@@ -42,6 +42,13 @@ def generate_launch_description():
                 'align_depth.enable': True,
                 'rgb_camera.color_profile': '640x480x30',
                 'depth_module.depth_profile': '640x480x30',
+                # We only consume color + aligned depth. The D455's IR streams are
+                # otherwise opened but never pulled, which spams "Frames didn't arrive
+                # within 5 seconds" and wastes USB bandwidth -> turn them off.
+                'enable_infra1': False,
+                'enable_infra2': False,
+                'enable_gyro': False,
+                'enable_accel': False,
             }],
             output='screen',
         ),
