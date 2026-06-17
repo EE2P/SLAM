@@ -135,11 +135,13 @@ class PersonDistanceNode(Node):
         else:
             depth_m = depth.astype(np.float32)
 
-        # retina_masks=True returns masks at the original image resolution,
-        # so they overlay the aligned depth image directly.
-        results = self.model.predict(
+        # retina_masks=True returns masks at the original image resolution, so they
+        # overlay the aligned depth image directly. track() (persist=True) keeps a
+        # stable id per person across frames so downstream consumers can lock a target;
+        # the worker only feeds the latest frame, so ids may re-assign after a long gap.
+        results = self.model.track(
             color, classes=[PERSON_CLASS_ID], conf=self.conf_threshold,
-            retina_masks=True, verbose=False)
+            retina_masks=True, persist=True, tracker='bytetrack.yaml', verbose=False)
         result = results[0]
 
         out = PersonDistanceArray()
@@ -148,10 +150,14 @@ class PersonDistanceNode(Node):
         if result.masks is not None and len(result.masks.data) > 0:
             masks = result.masks.data.cpu().numpy()  # (N, H, W), float 0/1
             confs = result.boxes.conf.cpu().numpy()
+            # boxes.id is None until the tracker has a confirmed track for a frame.
+            ids = result.boxes.id
+            ids = ids.cpu().numpy().astype(int) if ids is not None else None
             for i, (mask, conf) in enumerate(zip(masks, confs)):
                 if mask.shape != depth_m.shape:
                     continue  # depth not aligned to color resolution
-                person = self._measure(i, mask > 0.5, float(conf), depth_m)
+                track_id = int(ids[i]) if ids is not None else -1
+                person = self._measure(i, track_id, mask > 0.5, float(conf), depth_m)
                 if person is not None:
                     out.persons.append(person)
 
@@ -160,11 +166,12 @@ class PersonDistanceNode(Node):
         if self.pub_debug is not None and self.pub_debug.get_subscription_count() > 0:
             self._publish_debug(result, out, color_msg.header)
 
-    def _measure(self, idx, mask, conf, depth_m):
+    def _measure(self, idx, track_id, mask, conf, depth_m):
         d = depth_m[mask]
         d = d[(d > 0.1) & (d < self.max_distance)]
         person = PersonDistance()
         person.id = idx
+        person.track_id = track_id
         person.confidence = conf
         person.valid_depth_pixels = int(d.size)
 
