@@ -31,6 +31,7 @@ setup(
         'console_scripts': [
             'person_distance_node = person_distance.person_distance_node:main',
             'perception_benchmark = person_distance.benchmark_node:main',
+            'person_goal_node = person_distance.person_goal_node:main',
         ],
     },
 )

@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>lidar_nav_bringup</name>
+  <version>0.1.0</version>
+  <description>Livox MID-360 LiDAR-inertial SLAM (MOLA) + Nav2 3D obstacle-avoidance navigation bringup for a wheel-legged robot</description>
+  <maintainer email="han.li124@imperial.ac.uk">han</maintainer>
+  <license>MIT</license>
+
+  <!-- LiDAR driver (built from source into this workspace) + LiDAR-inertial odometry -->
+  <exec_depend>livox_ros_driver2</exec_depend>
+  <exec_depend>mola_lidar_odometry</exec_depend>
+  <exec_depend>mola_state_estimation</exec_depend>
+
+  <!-- TF / description -->
+  <exec_depend>tf2_ros</exec_depend>
+
+  <!-- Navigation + 3D voxel obstacle layer -->
+  <exec_depend>navigation2</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>spatio_temporal_voxel_layer</exec_depend>
+
+  <!-- Camera (perception only, shares the existing RealSense driver) -->
+  <exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>foxglove_bridge</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
+
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

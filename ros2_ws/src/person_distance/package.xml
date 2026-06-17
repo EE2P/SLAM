@@ -13,6 +13,8 @@
   <depend>cv_bridge</depend>
   <depend>message_filters</depend>
   <depend>person_distance_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
 
   <exec_depend>ros2launch</exec_depend>
 
