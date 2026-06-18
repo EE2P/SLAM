@@ -32,10 +32,12 @@ fi
 
 export TALKBOT_OUTPUT_BACKEND="${TALKBOT_OUTPUT_BACKEND:-aplay}"
 export TALKBOT_ALSA_OUTPUT_DEVICE="${TALKBOT_ALSA_OUTPUT_DEVICE:-pipewire}"
+export TALKBOT_INPUT_BACKEND="${TALKBOT_INPUT_BACKEND:-arecord}"
+export TALKBOT_ALSA_INPUT_DEVICE="${TALKBOT_ALSA_INPUT_DEVICE:-plughw:0,0}"
 TALKBOT_PIPEWIRE_SINK_NAME="${TALKBOT_PIPEWIRE_SINK_NAME:-USB2.0 Device Analog Stereo}"
 TALKBOT_PIPEWIRE_SOURCE_NAME="${TALKBOT_PIPEWIRE_SOURCE_NAME:-SF-558 Mono}"
 TALKBOT_PIPEWIRE_SINK_VOLUME="${TALKBOT_PIPEWIRE_SINK_VOLUME:-1.0}"
-TALKBOT_PIPEWIRE_SOURCE_VOLUME="${TALKBOT_PIPEWIRE_SOURCE_VOLUME:-2.0}"
+TALKBOT_PIPEWIRE_SOURCE_VOLUME="${TALKBOT_PIPEWIRE_SOURCE_VOLUME:-1.0}"
 
 find_wpctl_node_id() {
   local section="$1"
@@ -64,6 +66,7 @@ configure_pipewire_audio() {
     wpctl set-default "$sink_id" || true
     wpctl set-mute "$sink_id" 0 || true
     wpctl set-volume "$sink_id" "$TALKBOT_PIPEWIRE_SINK_VOLUME" || true
+    TALKBOT_PIPEWIRE_SINK_ID="$sink_id"
     echo "audio route: sink '$TALKBOT_PIPEWIRE_SINK_NAME' -> wpctl node $sink_id"
   else
     echo "audio route: sink '$TALKBOT_PIPEWIRE_SINK_NAME' not found; leaving default output" >&2
@@ -73,6 +76,7 @@ configure_pipewire_audio() {
     wpctl set-default "$source_id" || true
     wpctl set-mute "$source_id" 0 || true
     wpctl set-volume "$source_id" "$TALKBOT_PIPEWIRE_SOURCE_VOLUME" || true
+    TALKBOT_PIPEWIRE_SOURCE_ID="$source_id"
     echo "audio route: source '$TALKBOT_PIPEWIRE_SOURCE_NAME' -> wpctl node $source_id"
   else
     echo "audio route: source '$TALKBOT_PIPEWIRE_SOURCE_NAME' not found; leaving default input" >&2

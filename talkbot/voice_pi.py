@@ -338,7 +338,10 @@ mic_q: "queue.Queue[bytes]" = queue.Queue(maxsize=MIC_QUEUE_FRAMES)
 def mic_callback(indata, frames, time_info, status):
     if status:
         print(f"[mic] {status}", file=sys.stderr)
-    frame = bytes(indata)
+    _queue_mic_frame(bytes(indata))
+
+
+def _queue_mic_frame(frame: bytes):
     try:
         mic_q.put_nowait(frame)
     except queue.Full:
@@ -347,6 +350,71 @@ def mic_callback(indata, frames, time_info, status):
             mic_q.get_nowait()
         with contextlib.suppress(queue.Full):
             mic_q.put_nowait(frame)
+
+
+class ArecordInput:
+    """Mic input via ALSA arecord, useful when PipeWire capture is distorted."""
+
+    def __init__(self, device: str):
+        arecord = shutil.which("arecord")
+        if arecord is None:
+            raise RuntimeError("arecord input requested, but arecord was not found")
+        self.cmd = [
+            arecord,
+            "-q",
+            "-D", device,
+            "-t", "raw",
+            "-f", "S16_LE",
+            "-r", str(SEND_RATE),
+            "-c", "1",
+        ]
+        self._proc = None
+        self._thread = None
+        self._stop = threading.Event()
+
+    def __enter__(self):
+        self._stop.clear()
+        self._proc = subprocess.Popen(
+            self.cmd,
+            stdout=subprocess.PIPE,
+        )
+        self._thread = threading.Thread(target=self._read_loop, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    def close(self):
+        self._stop.set()
+        proc = self._proc
+        self._proc = None
+        if proc and proc.poll() is None:
+            proc.terminate()
+            with contextlib.suppress(Exception):
+                proc.wait(timeout=1)
+            if proc.poll() is None:
+                with contextlib.suppress(Exception):
+                    proc.kill()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1)
+        self._thread = None
+
+    def _read_loop(self):
+        proc = self._proc
+        if proc is None or proc.stdout is None:
+            return
+
+        frame_bytes = FRAME_SAMPLES * 2
+        buf = bytearray()
+        while not self._stop.is_set():
+            chunk = proc.stdout.read(frame_bytes - len(buf))
+            if not chunk:
+                break
+            buf.extend(chunk)
+            if len(buf) >= frame_bytes:
+                _queue_mic_frame(bytes(buf[:frame_bytes]))
+                del buf[:frame_bytes]
 
 
 def _device_channels(device, direction: str) -> int:
@@ -741,7 +809,9 @@ async def main():
         # triggers the known "no response after ActivityEnd / 1011 keepalive" bug.
     )
 
-    input_dev = _find_audio_device("input")
+    input_backend = os.environ.get("TALKBOT_INPUT_BACKEND", "sounddevice").lower()
+    alsa_input_device = os.environ.get("TALKBOT_ALSA_INPUT_DEVICE", "plughw:0,0")
+    input_dev = None if input_backend == "arecord" else _find_audio_device("input")
     output_backend = os.environ.get("TALKBOT_OUTPUT_BACKEND", "auto").lower()
     output_settings = None
     aplay_cmd = None
@@ -757,22 +827,27 @@ async def main():
         output_settings = _find_output_settings()
         output_dev = output_settings["device"] if output_settings else None
 
-    if input_dev is None or output_dev is None:
+    if (input_backend != "arecord" and input_dev is None) or output_dev is None:
         print(sd.query_devices(), file=sys.stderr)
         sys.exit("audio: could not find both a usable input device and output device")
 
     devices = sd.query_devices()
-    sd.default.device = (input_dev, output_dev)
+    if input_dev is not None:
+        sd.default.device = (input_dev, output_dev)
     output_desc = (
         f"aplay {' '.join(aplay_cmd[1:])}"
         if aplay_cmd is not None else
         f"{output_settings['samplerate']} Hz, "
         f"{output_settings['channels']} ch, {output_settings['dtype']}"
     )
-    print(
-        "audio: mic -> "
+    input_desc = (
+        f"arecord -D {alsa_input_device} -r {SEND_RATE} -c 1"
+        if input_backend == "arecord" else
         f"{devices[input_dev]['name']} (index {input_dev}, "
-        f"{devices[input_dev]['max_input_channels']} ch); "
+        f"{devices[input_dev]['max_input_channels']} ch)"
+    )
+    print(
+        f"audio: mic -> {input_desc}; "
         "speaker -> "
         f"{devices[output_dev]['name']} (index {output_dev}, "
         f"{devices[output_dev]['max_output_channels']} ch, {output_desc})"
@@ -808,10 +883,14 @@ async def main():
             samplerate=output_rate, channels=output_channels, dtype=output_dtype,
             device=output_dev, callback=playback.callback,
         )
-    in_stream = sd.RawInputStream(
-        samplerate=SEND_RATE, channels=1, dtype="int16",
-        device=input_dev, blocksize=FRAME_SAMPLES, callback=mic_callback,
-    )
+    if input_backend == "arecord":
+        in_stream = ArecordInput(alsa_input_device)
+        print(f"audio: mic stream -> {' '.join(in_stream.cmd)}")
+    else:
+        in_stream = sd.RawInputStream(
+            samplerate=SEND_RATE, channels=1, dtype="int16",
+            device=input_dev, blocksize=FRAME_SAMPLES, callback=mic_callback,
+        )
 
     mouth_task = None
     try:
