@@ -40,7 +40,8 @@ the downstream driver can treat a stale heartbeat as "bridge dead → stop".
 `desired_distance_m` (1.5), `stop_band_m` (0.2), `kp_linear_m`, `kp_yaw_bearing`,
 `max_linear`/`max_reverse`/`max_angular`, `recovery_yaw`, `conf_min`,
 `min_valid_depth_pixels`, `max_range_m`, `search_timeout_s` (2.0),
-`drive_sign` (1.0), `yaw_sign` (**-1.0** — maps the law's yaw-right-positive to REP-103;
+`drive_sign` (**-1.0** — flips law-forward to chassis-forward; confirm on-robot),
+`yaw_sign` (**-1.0** — maps the law's yaw-right-positive to REP-103;
 confirm on-robot), `cmd_vel_topic`, `person_topic`, `publish_rate_hz`.
 
 ## Build & run (on the Jetson)
