@@ -30,6 +30,57 @@ if [[ -f "$ENV_FILE" ]]; then
   set -a; . "$ENV_FILE"; set +a
 fi
 
+export TALKBOT_OUTPUT_BACKEND="${TALKBOT_OUTPUT_BACKEND:-aplay}"
+export TALKBOT_ALSA_OUTPUT_DEVICE="${TALKBOT_ALSA_OUTPUT_DEVICE:-pipewire}"
+TALKBOT_PIPEWIRE_SINK_NAME="${TALKBOT_PIPEWIRE_SINK_NAME:-USB2.0 Device Analog Stereo}"
+TALKBOT_PIPEWIRE_SOURCE_NAME="${TALKBOT_PIPEWIRE_SOURCE_NAME:-SF-558 Mono}"
+TALKBOT_PIPEWIRE_SINK_VOLUME="${TALKBOT_PIPEWIRE_SINK_VOLUME:-1.0}"
+TALKBOT_PIPEWIRE_SOURCE_VOLUME="${TALKBOT_PIPEWIRE_SOURCE_VOLUME:-2.0}"
+
+find_wpctl_node_id() {
+  local section="$1"
+  local name="$2"
+
+  wpctl status | awk -v section="$section" -v name="$name" '
+    index($0, section) { in_section = 1; next }
+    in_section && index($0, "endpoints:") { exit }
+    in_section && index($0, name) {
+      if (match($0, /[0-9]+\./)) {
+        print substr($0, RSTART, RLENGTH - 1)
+        exit
+      }
+    }
+  '
+}
+
+configure_pipewire_audio() {
+  command -v wpctl >/dev/null 2>&1 || return 0
+
+  local sink_id source_id
+  sink_id="$(find_wpctl_node_id "Sinks:" "$TALKBOT_PIPEWIRE_SINK_NAME" || true)"
+  source_id="$(find_wpctl_node_id "Sources:" "$TALKBOT_PIPEWIRE_SOURCE_NAME" || true)"
+
+  if [[ -n "$sink_id" ]]; then
+    wpctl set-default "$sink_id" || true
+    wpctl set-mute "$sink_id" 0 || true
+    wpctl set-volume "$sink_id" "$TALKBOT_PIPEWIRE_SINK_VOLUME" || true
+    echo "audio route: sink '$TALKBOT_PIPEWIRE_SINK_NAME' -> wpctl node $sink_id"
+  else
+    echo "audio route: sink '$TALKBOT_PIPEWIRE_SINK_NAME' not found; leaving default output" >&2
+  fi
+
+  if [[ -n "$source_id" ]]; then
+    wpctl set-default "$source_id" || true
+    wpctl set-mute "$source_id" 0 || true
+    wpctl set-volume "$source_id" "$TALKBOT_PIPEWIRE_SOURCE_VOLUME" || true
+    echo "audio route: source '$TALKBOT_PIPEWIRE_SOURCE_NAME' -> wpctl node $source_id"
+  else
+    echo "audio route: source '$TALKBOT_PIPEWIRE_SOURCE_NAME' not found; leaving default input" >&2
+  fi
+}
+
+configure_pipewire_audio
+
 # 2) 定位名为 talkbot 的虚拟环境
 find_venv() {
   [[ -n "${TALKBOT_VENV:-}" ]] && { printf '%s\n' "$TALKBOT_VENV"; return 0; }
