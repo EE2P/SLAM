@@ -40,7 +40,7 @@ class XboxModeNode(Node):
         self.declare_parameter('button_start_toggle', 11) # Start/Menu
 
         self.declare_parameter('deadzone', 0.08)
-        self.declare_parameter('max_linear', 0.8)
+        self.declare_parameter('max_linear', 0.4)
         self.declare_parameter('max_yaw_rate', 1.8)
         self.declare_parameter('max_roll', 0.25)
         self.declare_parameter('max_pitch', 0.25)
