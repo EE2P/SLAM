@@ -26,18 +26,18 @@ class XboxModeNode(Node):
 
         self.declare_parameter('axis_linear', 1)
         self.declare_parameter('axis_yaw', 0)
-        self.declare_parameter('axis_roll', 3)
-        self.declare_parameter('axis_pitch', 4)
+        self.declare_parameter('axis_roll', 2)
+        self.declare_parameter('axis_pitch', 3)
         self.declare_parameter('axis_dpad_y', 7)
 
         self.declare_parameter('button_enable', 0)      # A
         self.declare_parameter('button_disarm', 1)      # B
-        self.declare_parameter('button_arm', 2)         # X
-        self.declare_parameter('button_mode_cycle', 3)  # Y
-        self.declare_parameter('button_assist', 4)      # LB
-        self.declare_parameter('button_clear_fault', 5) # RB
-        self.declare_parameter('button_disable', 6)     # Back
-        self.declare_parameter('button_start_toggle', 7) # Start
+        self.declare_parameter('button_arm', 3)         # X
+        self.declare_parameter('button_mode_cycle', 4)  # Y
+        self.declare_parameter('button_assist', 6)      # LB
+        self.declare_parameter('button_clear_fault', 7) # RB
+        self.declare_parameter('button_disable', 10)    # Back/View
+        self.declare_parameter('button_start_toggle', 11) # Start/Menu
 
         self.declare_parameter('deadzone', 0.08)
         self.declare_parameter('max_linear', 0.8)
@@ -45,8 +45,8 @@ class XboxModeNode(Node):
         self.declare_parameter('max_roll', 0.25)
         self.declare_parameter('max_pitch', 0.25)
         self.declare_parameter('linear_sign', 1.0)
-        self.declare_parameter('yaw_sign', 1.0)
-        self.declare_parameter('roll_sign', 1.0)
+        self.declare_parameter('yaw_sign', -1.0)
+        self.declare_parameter('roll_sign', -1.0)
         self.declare_parameter('pitch_sign', 1.0)
         self.declare_parameter('default_leg', 0.12)
         self.declare_parameter('min_leg', 0.068)
