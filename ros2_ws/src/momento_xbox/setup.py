@@ -19,6 +19,7 @@ setup(
     entry_points={
         'console_scripts': [
             'xbox_mode_node = momento_xbox.xbox_mode_node:main',
+            'joy_mapping_probe = momento_xbox.joy_mapping_probe_node:main',
         ],
     },
 )
