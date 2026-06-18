@@ -1,0 +1,38 @@
+[project]
+name = "talkbot"
+version = "0.1.0"
+description = "Voice assistant 'Helen' (Gemini Live) with an MCP server for driving the balance robot via Intellitrack"
+requires-python = ">=3.11"
+dependencies = [
+    "google-genai>=1.20,<2",
+    "mcp>=1.9,<2",
+    "websockets>=12",
+    "httpx>=0.27",
+    "numpy",
+    "sounddevice",
+    "webrtcvad",
+    "openwakeword",
+    "onnxruntime",
+]
+
+[project.scripts]
+robot-mcp = "robot_mcp.server:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "fastapi",
+    "uvicorn",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["robot_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
