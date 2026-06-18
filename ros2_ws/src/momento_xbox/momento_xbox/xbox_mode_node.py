@@ -48,7 +48,7 @@ class XboxModeNode(Node):
         self.declare_parameter('yaw_sign', -1.0)
         self.declare_parameter('roll_sign', -1.0)
         self.declare_parameter('pitch_sign', 1.0)
-        self.declare_parameter('default_leg', 0.12)
+        self.declare_parameter('default_leg', 0.07)
         self.declare_parameter('min_leg', 0.068)
         self.declare_parameter('max_leg', 0.21)
         self.declare_parameter('leg_step', 0.005)
