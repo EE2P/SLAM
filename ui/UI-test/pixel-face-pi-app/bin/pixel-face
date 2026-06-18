@@ -1,0 +1,319 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+HTML_FILE="${PIXEL_FACE_HTML:-$APP_ROOT/app/index.html}"
+MODE="${PIXEL_FACE_MODE:-kiosk}"
+PROFILE_DIR="${PIXEL_FACE_PROFILE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/pixel-face-chromium-profile}"
+WIDTH="${PIXEL_FACE_WIDTH:-800}"
+HEIGHT="${PIXEL_FACE_HEIGHT:-480}"
+GRAPHICAL_SESSION_HINT=""
+
+session_prop() {
+  local props="$1"
+  local key="$2"
+  local line
+
+  while IFS= read -r line; do
+    case "$line" in
+      "$key="*)
+        printf '%s\n' "${line#*=}"
+        return 0
+        ;;
+    esac
+  done <<< "$props"
+
+  return 1
+}
+
+find_unique_x_display() {
+  local sock
+  local -a sockets=()
+
+  for sock in /tmp/.X11-unix/X*; do
+    [[ -S "$sock" ]] || continue
+    sockets+=("$sock")
+  done
+
+  if [[ "${#sockets[@]}" -eq 1 ]]; then
+    printf ':%s\n' "${sockets[0]##*/X}"
+    return 0
+  fi
+
+  return 1
+}
+
+find_unique_wayland_display() {
+  local runtime_dir="$1"
+  local sock
+  local -a sockets=()
+
+  [[ -d "$runtime_dir" ]] || return 1
+
+  for sock in "$runtime_dir"/wayland-*; do
+    [[ -S "$sock" ]] || continue
+    sockets+=("$sock")
+  done
+
+  if [[ "${#sockets[@]}" -eq 1 ]]; then
+    basename "${sockets[0]}"
+    return 0
+  fi
+
+  return 1
+}
+
+set_default_xauthority() {
+  local auth
+
+  [[ -n "${XAUTHORITY:-}" ]] && return 0
+
+  for auth in "$HOME/.Xauthority" "${XDG_RUNTIME_DIR:-}/gdm/Xauthority" "${XDG_RUNTIME_DIR:-}/lightdm/Xauthority"; do
+    [[ -f "$auth" ]] || continue
+    export XAUTHORITY="$auth"
+    return 0
+  done
+
+  return 0
+}
+
+set_default_dbus() {
+  if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" && -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME_DIR/bus" ]]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+  fi
+}
+
+detect_graphical_session() {
+  local uid
+  local sid session_uid session_user
+  local props type state remote display
+  local -a matches=()
+
+  if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
+    return 0
+  fi
+
+  uid="$(id -u)"
+
+  if command -v loginctl >/dev/null 2>&1; then
+    while read -r sid session_uid session_user _rest; do
+      [[ -n "${sid:-}" ]] || continue
+      [[ "${session_uid:-}" == "$uid" ]] || continue
+
+      props="$(loginctl show-session "$sid" -p Type -p State -p Remote -p Display 2>/dev/null || true)"
+      type="$(session_prop "$props" Type || true)"
+      state="$(session_prop "$props" State || true)"
+      remote="$(session_prop "$props" Remote || true)"
+      display="$(session_prop "$props" Display || true)"
+
+      [[ "$remote" == "yes" ]] && continue
+      [[ "$state" == "active" || "$state" == "online" ]] || continue
+
+      case "$type" in
+        x11|wayland)
+          matches+=("$sid|$type|$display")
+          ;;
+      esac
+    done < <(loginctl list-sessions --no-legend 2>/dev/null || true)
+
+    if [[ "${#matches[@]}" -gt 1 ]]; then
+      echo "Found more than one graphical session for user $USER:" >&2
+      printf '  %s\n' "${matches[@]}" >&2
+      echo "Set DISPLAY or WAYLAND_DISPLAY explicitly, then run again." >&2
+      exit 1
+    fi
+
+    if [[ "${#matches[@]}" -eq 1 ]]; then
+      IFS='|' read -r sid type display <<< "${matches[0]}"
+      export XDG_SESSION_ID="$sid"
+      export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+      set_default_dbus
+
+      case "$type" in
+        x11)
+          if [[ -z "$display" ]]; then
+            display="$(find_unique_x_display || true)"
+          fi
+          export DISPLAY="${display:-:0}"
+          set_default_xauthority
+          GRAPHICAL_SESSION_HINT="x11 session $sid on DISPLAY=$DISPLAY"
+          return 0
+          ;;
+        wayland)
+          local x_display=""
+          if [[ "$display" == :* ]]; then
+            x_display="$display"
+            display=""
+          fi
+
+          if [[ -z "$display" ]]; then
+            display="$(find_unique_wayland_display "$XDG_RUNTIME_DIR" || true)"
+          fi
+          if [[ -n "$display" ]]; then
+            export WAYLAND_DISPLAY="$display"
+            GRAPHICAL_SESSION_HINT="wayland session $sid on WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+            return 0
+          fi
+
+          if [[ -z "$x_display" ]]; then
+            x_display="$(find_unique_x_display || true)"
+          fi
+          if [[ -n "$x_display" ]]; then
+            export DISPLAY="$x_display"
+            set_default_xauthority
+            GRAPHICAL_SESSION_HINT="wayland session $sid via X display $DISPLAY"
+            return 0
+          fi
+          ;;
+      esac
+    fi
+  fi
+
+  display="$(find_unique_x_display || true)"
+  if [[ -n "$display" ]]; then
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+    export DISPLAY="$display"
+    set_default_xauthority
+    set_default_dbus
+    GRAPHICAL_SESSION_HINT="unique X display $DISPLAY"
+    return 0
+  fi
+
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+  display="$(find_unique_wayland_display "$XDG_RUNTIME_DIR" || true)"
+  if [[ -n "$display" ]]; then
+    export WAYLAND_DISPLAY="$display"
+    set_default_dbus
+    GRAPHICAL_SESSION_HINT="unique Wayland display $WAYLAND_DISPLAY"
+  fi
+}
+
+if [[ ! -f "$HTML_FILE" ]]; then
+  echo "Pixel Face app file not found: $HTML_FILE" >&2
+  exit 1
+fi
+
+detect_graphical_session
+
+if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+  echo "No graphical session found. Start Raspberry Pi Desktop first, then run this app." >&2
+  exit 1
+fi
+
+if [[ -n "$GRAPHICAL_SESSION_HINT" ]]; then
+  echo "Using $GRAPHICAL_SESSION_HINT" >&2
+fi
+
+find_chromium() {
+  if [[ -n "${CHROMIUM:-}" ]]; then
+    if command -v "$CHROMIUM" >/dev/null 2>&1; then
+      command -v "$CHROMIUM"
+      return 0
+    fi
+    if [[ -x "$CHROMIUM" ]]; then
+      printf '%s\n' "$CHROMIUM"
+      return 0
+    fi
+  fi
+
+  local candidate
+  for candidate in chromium-browser chromium google-chrome-stable google-chrome; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      command -v "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+make_file_url() {
+  local path="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' "$path"
+  else
+    printf 'file://%s\n' "$(realpath "$path")"
+  fi
+}
+
+CHROME="$(find_chromium || true)"
+if [[ -z "$CHROME" ]]; then
+  echo "Chromium was not found. Install it on Raspberry Pi OS with:" >&2
+  echo "  sudo apt update && sudo apt install -y chromium-browser" >&2
+  exit 1
+fi
+
+mkdir -p "$PROFILE_DIR"
+
+if command -v xset >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
+  xset s off >/dev/null 2>&1 || true
+  xset s noblank >/dev/null 2>&1 || true
+  xset -dpms >/dev/null 2>&1 || true
+fi
+
+if [[ "${PIXEL_FACE_HIDE_CURSOR:-1}" == "1" ]] && command -v unclutter >/dev/null 2>&1; then
+  (unclutter -idle 0.2 -root >/dev/null 2>&1 || true) &
+fi
+
+# 用本地 HTTP 端出页面，而不是 file://。新版 Chromium 的 Private Network Access 会拦截
+# file:// 页面发往 ws://127.0.0.1 的连接（WebSocket 永久卡 connecting，连 TCP 都不发）；
+# 改用 http://127.0.0.1 让页面成为“本地源”，连本地 ws 就放行了。
+HTTP_PORT="${PIXEL_FACE_HTTP_PORT:-8766}"
+APP_DIR="$(dirname "$HTML_FILE")"
+python3 -m http.server "$HTTP_PORT" --bind 127.0.0.1 --directory "$APP_DIR" >/dev/null 2>&1 &
+HTTP_PID=$!
+URL="http://127.0.0.1:${HTTP_PORT}/$(basename "$HTML_FILE")"
+
+# 等 HTTP 服务真正监听上再开 Chromium，否则慢一点的 Pi 上会“连接被拒 → 白屏”
+tries=0
+while [[ $tries -lt 50 ]]; do
+  if (exec 3<>"/dev/tcp/127.0.0.1/${HTTP_PORT}") 2>/dev/null; then exec 3>&- 2>/dev/null || true; break; fi
+  tries=$((tries + 1)); sleep 0.1
+done
+
+CHROME_PID=""
+cleanup_face(){
+  if [[ -n "${HTTP_PID:-}" ]]; then kill "$HTTP_PID" 2>/dev/null || true; fi
+  if [[ -n "${CHROME_PID:-}" ]]; then kill "$CHROME_PID" 2>/dev/null || true; fi
+}
+trap cleanup_face EXIT
+trap 'exit 0' INT TERM
+
+FLAGS=(
+  "--user-data-dir=$PROFILE_DIR"
+  "--no-first-run"
+  "--disable-infobars"
+  "--disable-session-crashed-bubble"
+  "--disable-features=TranslateUI"
+  "--autoplay-policy=no-user-gesture-required"
+  "--hide-scrollbars"
+  "--overscroll-history-navigation=0"
+  "--disable-pinch"
+  "--password-store=basic"           # 不用系统钥匙串，去掉反复弹出的 "choose password for new keyring"
+  "--no-proxy-server"                # 关键：别把发往 127.0.0.1 的 WS 连接塞进系统代理（否则一直卡 connecting）
+  "--enable-logging=stderr"          # 页面 console / WebSocket 失败原因 -> stderr(进 /tmp/pixel-face.log)
+)
+
+if [[ -n "${WAYLAND_DISPLAY:-}" && -z "${DISPLAY:-}" ]]; then
+  FLAGS+=("--ozone-platform=wayland")
+fi
+
+# 双保险：清掉可能从 SSH/shell 继承来的代理环境变量，否则 Chromium 会把
+# 发往 127.0.0.1 的 WebSocket 也走代理，永久卡在 connecting。配合 --no-proxy-server。
+unset http_proxy https_proxy all_proxy ftp_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY FTP_PROXY
+
+case "$MODE" in
+  kiosk|fullscreen)
+    "$CHROME" "${FLAGS[@]}" --kiosk "$URL" &
+    ;;
+  app|window)
+    "$CHROME" "${FLAGS[@]}" "--app=$URL" "--window-size=${WIDTH},${HEIGHT}" "--window-position=0,0" &
+    ;;
+  *)
+    echo "Unknown PIXEL_FACE_MODE: $MODE" >&2
+    echo "Use kiosk, fullscreen, app, or window." >&2
+    exit 1
+    ;;
+esac
+CHROME_PID=$!
+wait "$CHROME_PID"

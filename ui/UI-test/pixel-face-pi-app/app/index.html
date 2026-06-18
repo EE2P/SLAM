@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>像素脸 · 会说话</title>
+<style>
+  :root{
+    /* 嘴(频谱)配色 黄→绿→蓝 */
+    --eq-yellow: 236, 210, 74;
+    --eq-green:  95, 191, 90;
+    --eq-blue:   79, 150, 217;
+
+    /* 眼睛配色（发光的冷白） */
+    --eye:      222, 234, 248;
+    --eye-glow: 150, 200, 255;
+
+    /* 眼睛像素几何 */
+    --px:   clamp(9px, 2.4vw, 13px);
+    --pgap: clamp(3px, 0.9vw, 5px);
+
+    /* 嘴(频谱)几何 */
+    --bar-w:   clamp(7px, 1.9vw, 13px);
+    --bar-gap: clamp(4px, 1.2vw, 7px);
+    --bar-max: clamp(90px, 26vh, 200px);
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; }
+
+  body{
+    font-family:-apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", system-ui, sans-serif;
+    min-height:100dvh;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    overflow:hidden; user-select:none;
+    background:radial-gradient(120% 100% at 50% 42%, #14161c 0%, #0a0b0f 55%, #050506 100%);
+  }
+
+  /* 整张脸：眼在上，嘴(频谱)在下 */
+  .face{ display:flex; flex-direction:column; align-items:center;
+         gap:clamp(34px, 7vh, 64px); }
+
+  .eyes{ display:flex; gap:clamp(30px, 8vw, 52px); }
+  .eye{ display:grid; gap:var(--pgap); will-change:transform; }
+  .px{
+    width:var(--px); height:var(--px);
+    border-radius:3px;
+    background:rgb(var(--eye));
+    box-shadow:0 0 8px rgba(var(--eye-glow), .55);
+    will-change:opacity;
+  }
+
+  .eq{ display:flex; align-items:center; gap:var(--bar-gap); height:var(--bar-max); }
+  .bar{ width:var(--bar-w); height:10px; border-radius:calc(var(--bar-w)/2); will-change:height; }
+
+  @media (prefers-reduced-motion: reduce){
+    .eye,.bar,.px{ will-change:auto; }
+  }
+</style>
+</head>
+<body>
+  <div class="face">
+    <div class="eyes">
+      <div class="eye" id="eyeL"></div>
+      <div class="eye" id="eyeR"></div>
+    </div>
+    <div class="eq" id="eq"></div>
+  </div>
+  <div id="dbg" style="position:fixed;left:5px;bottom:3px;font:13px monospace;color:#5af;opacity:.85;z-index:9999;pointer-events:none;white-space:pre"></div>
+
+  <script>
+  (function(){
+    "use strict";
+
+    // ===== 眼睛几何 / 眨眼（沿用原文件手感）=====
+    const COLS=6, ROWS=8;
+    const OPEN_O=1.08;     // 睁开程度（>1 让边缘像素也亮满）
+    const CLOSED_O=0.20;   // 闭合时只留中间一条线
+    const EDGE=0.18;       // 眼睑边缘柔和度
+    const CLOSE_MS=110, HOLD_MS=40, OPEN_MS=140;
+    const rowCenter=(ROWS-1)/2;
+
+    // ===== 嘴：程序化“说话”引擎 =====
+    const NUM_BARS=15, MIN_FRAC=0.05;
+    const ATTACK=0.55, RELEASE=0.10;                 // 每根柱的平滑
+    const SYL_MIN=90, SYL_MAX=220;                   // 音节间隔 ms
+    const PAUSE_CHANCE=0.15, PAUSE_MIN=400, PAUSE_MAX=900; // 词/句停顿
+    const SYL_ATK_MIN=30, SYL_ATK_MAX=75;            // 每个音节的起音长度（随机）
+    const SYL_REL_MIN=90, SYL_REL_MAX=240;           // 每个音节的落音长度（随机）
+    const SYL_PEAK_MIN=0.35, SYL_PEAK_MAX=1.0;       // 音节强弱
+    const SHAPE_EXP_MIN=1.1, SHAPE_EXP_MAX=2.7;      // 嘴型宽窄（每个音节随机：宽←→窄）
+    const SHAPE_SHIFT=0.35;                          // 嘴型左右偏移幅度
+    const SHAPE_SMOOTH=0.12;                         // 嘴型形变的平滑速度
+    const MOUTH_ATTACK=0.6, MOUTH_RELEASE=0.22;      // mouthOpen 平滑
+    const BREATH_AMP=0.05, BREATH_HZ=0.22;           // 呼吸基线（停顿也不死）
+    const BEAT_HZ=2.6, BEAT_ACCENT=0.12;             // 隐性节拍，落拍加重
+    const PROFILE_EXP=1.6, EDGE_FLOOR=0.18;          // 嘴型：中间高两边低
+    const BAR_NOISE_AMP=0.10, BAR_NOISE_HZ=0.9;      // 每柱去同步噪声
+
+    // ---- 通用小工具 ----
+    const clamp01 = x => x<0?0:(x>1?1:x);
+    const lerp = (a,b,t)=>a+(b-a)*t;
+    const easeIO = t => t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
+
+    // ---- 嘴的颜色插值（黄→绿→蓝）----
+    const css = getComputedStyle(document.documentElement);
+    const rgbVar = n => css.getPropertyValue(n).split(",").map(s=>parseFloat(s));
+    const C_Y=rgbVar("--eq-yellow"), C_G=rgbVar("--eq-green"), C_B=rgbVar("--eq-blue");
+    const lerp3=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+    const colorAt=t=>(t<0.5?lerp3(C_Y,C_G,t/0.5):lerp3(C_G,C_B,(t-0.5)/0.5)).map(Math.round);
+
+    // ================= 构建眼睛 =================
+    // 角落像素关闭 → 圆角矩形轮廓
+    function cornerOff(c,r){
+      const ce=Math.min(c, COLS-1-c), re=Math.min(r, ROWS-1-r);
+      return ce===0 && re===0;
+    }
+    const eyeLpx=[], eyeRpx=[];   // 每像素 {el, c, r, d}
+    function buildEye(host, store){
+      host.style.gridTemplateColumns = `repeat(${COLS}, var(--px))`;
+      for(let i=0;i<COLS*ROWS;i++){
+        const c=i%COLS, r=Math.floor(i/COLS);
+        const cell=document.createElement("div");
+        cell.className="px";
+        host.appendChild(cell);
+        if(cornerOff(c,r)){ cell.style.opacity="0"; continue; }   // 静态关闭
+        store.push({el:cell, c, r, d:Math.abs(r-rowCenter)/rowCenter});
+      }
+    }
+    const eyeLel=document.getElementById("eyeL");
+    const eyeREl=document.getElementById("eyeR");
+    buildEye(eyeLel, eyeLpx);
+    buildEye(eyeREl, eyeRpx);
+
+    // ================= 构建嘴 =================
+    const eqEl=document.getElementById("eq");
+    const bars=[]; const heights=new Array(NUM_BARS).fill(MIN_FRAC);
+    for(let i=0;i<NUM_BARS;i++){
+      const b=document.createElement("div"); b.className="bar";
+      const t = NUM_BARS>1 ? i/(NUM_BARS-1) : 0;
+      const [r,g,bl]=colorAt(t);
+      b.style.background=`rgb(${r},${g},${bl})`;
+      b.style.boxShadow=`0 0 12px rgba(${r},${g},${bl},0.4)`;
+      eqEl.appendChild(b); bars.push(b);
+    }
+    function barMaxPx(){ return parseFloat(getComputedStyle(eqEl).height)||160; }
+
+    // 每柱去同步噪声（一次性预计算）
+    const noisePhase=new Array(NUM_BARS), noiseRate=new Array(NUM_BARS);
+    for(let i=0;i<NUM_BARS;i++){
+      noisePhase[i]=Math.random()*Math.PI*2;
+      noiseRate[i]=BAR_NOISE_HZ*(0.7+Math.random()*0.6);    // 各柱速率略不同 → 不齐步
+    }
+    // 动态嘴型：每个音节给出不同的宽窄(exp)与左右偏移(shift)，逐帧平滑形变
+    function profileAt(i, exp, shift){
+      const x=((i/(NUM_BARS-1))*2-1) - shift;
+      return EDGE_FLOOR + (1-EDGE_FLOOR)*Math.pow(Math.max(0,1-Math.abs(x)), exp);
+    }
+
+    // ================= 状态 =================
+    // 嘴
+    let sylStart=-1e9, sylPeak=0, sylAtk=SYL_ATK_MIN, sylRel=SYL_REL_MIN, nextSyl=performance.now()+120;
+    let mouthOpen=0, mouthEnv=0;
+    let speaking=false;                                            // 仅 Helen 回复时为 true → 嘴动
+    let shapeExp=PROFILE_EXP, shapeShift=0, tgtShapeExp=PROFILE_EXP, tgtShapeShift=0;  // 嘴型形变
+    let accentPulse=0;                                       // 眼↔嘴 联动信号
+    // 眼：眨眼/wink
+    let nextBlink=performance.now()+1200, blinking=false, blinkStart=0, winkEye=0; // -1 左, +1 右, 0 双
+    // 眼：表情状态机
+    let curExpr="neutral", prevExpr="neutral", xfadeStart=-1e9;
+    const EXPR_MIN_MS=6000, EXPR_MAX_MS=12000;
+    let nextExpr=performance.now()+5000, exprEndsAt=0, nextAccentHappy=0;
+    let commandedUntil=0;                                          // 指令表情保持到该时刻
+    const XFADE_MS=180;
+
+    // ================= 嘴：说话引擎 =================
+    function scheduleSyllable(t){
+      if(t<nextSyl) return;
+      sylStart=t;
+      const beatPhase=(t/1000)*BEAT_HZ;
+      const nearBeat=Math.abs(beatPhase-Math.round(beatPhase))<0.18;   // 落在拍上 → 重音
+      sylPeak=Math.min(1, SYL_PEAK_MIN+Math.random()*(SYL_PEAK_MAX-SYL_PEAK_MIN)+(nearBeat?BEAT_ACCENT:0));
+      sylAtk = SYL_ATK_MIN + Math.random()*(SYL_ATK_MAX-SYL_ATK_MIN); // 每个音节起/落时长都不同
+      sylRel = SYL_REL_MIN + Math.random()*(SYL_REL_MAX-SYL_REL_MIN);
+      tgtShapeExp   = SHAPE_EXP_MIN + Math.random()*(SHAPE_EXP_MAX-SHAPE_EXP_MIN); // 这个音节的嘴型宽窄
+      tgtShapeShift = (Math.random()*2-1)*SHAPE_SHIFT;                 // 嘴型略微左右偏
+      if(sylPeak>0.8) accentPulse=Math.max(accentPulse, sylPeak);      // 激动 → 通知眼睛
+      if(Math.random()<PAUSE_CHANCE) nextSyl=t+PAUSE_MIN+Math.random()*(PAUSE_MAX-PAUSE_MIN);
+      else nextSyl=t+SYL_MIN+Math.random()*(SYL_MAX-SYL_MIN);
+    }
+    function syllableEnv(t){
+      const e=t-sylStart; if(e<0) return 0;
+      if(e<sylAtk) return sylPeak*(e/sylAtk);                         // 线性快起（时长随音节变）
+      const r=(e-sylAtk)/sylRel;
+      return r>=1 ? 0 : sylPeak*(1-r)*(1-r);                          // 二次慢落（时长随音节变）
+    }
+
+    // ================= 眼：表情遮罩 =================
+    const colMax=COLS-1, colCenter=(COLS-1)/2;
+    const SURPRISE_O=1.45;
+    const ARC_WIDTH=1.15;                                            // 笑眼弧线粗细
+    const ANG_BASE=0.5, ANG_SLOPE=0.45, ANG_SOFT=0.6;                // 生气/难过：上眼睑斜切(角度小)
+
+    function maskNeutral(){ return 1.0; }                            // 轮廓+眨眼全交给 lidGain
+    function maskHappy(px){                                          // '^ ^' 向上拱的笑眼（两眼相同）
+      const x=(px.c-colCenter)/colCenter;                           // -1..1 横跨各列
+      const arcRow = 2.0 + 2.2*x*x;                                 // 中间高(行小)、两边低
+      return clamp01(1 - Math.abs(px.r-arcRow)/ARC_WIDTH);
+    }
+    function maskSad(px,isLeft){                                     // 实心眼 + 上眼睑往外侧斜切(左/右\) 眉尾下垂
+      const lidRow = ANG_BASE + ANG_SLOPE*(isLeft ? (colMax-px.c) : px.c);
+      return clamp01((px.r-lidRow)/ANG_SOFT + 0.5);                 // lidRow 以下保留实心，以上被遮住
+    }
+    function maskAngry(px,isLeft){                                   // 实心眼 + 上眼睑往内侧斜切(左\右/) 眉头下压
+      const lidRow = ANG_BASE + ANG_SLOPE*(isLeft ? px.c : (colMax-px.c));
+      return clamp01((px.r-lidRow)/ANG_SOFT + 0.5);
+    }
+    function maskSurprise(px){ return clamp01((SURPRISE_O-px.d)/EDGE+0.5); }
+
+    const EXPR={
+      neutral:  {mask:maskNeutral,  gaze:0,  scaleY:1.0,  dur:0},
+      happy:    {mask:maskHappy,    gaze:0,  scaleY:0.92, dur:1400},
+      sad:      {mask:maskSad,      gaze:0,  scaleY:1.0,  dur:1400},
+      angry:    {mask:maskAngry,    gaze:0,  scaleY:1.0,  dur:1400},
+      surprise: {mask:maskSurprise, gaze:0,  scaleY:1.18, dur:900},
+      lookL:    {mask:maskNeutral,  gaze:-1, scaleY:1.0,  dur:900},
+      lookR:    {mask:maskNeutral,  gaze:+1, scaleY:1.0,  dur:900},
+    };
+    function setExpr(name,t){ if(name===curExpr) return; prevExpr=curExpr; curExpr=name; xfadeStart=t; }
+    // 指令/触摸强制的表情：保持一段时间，期间随机调度器不得抢占
+    const CMD_DUR=2500;
+    const STICK=Infinity;        // 保持到下次改变（不自动回中性）——点击和 Helen 的表情都用它
+    function commandExpr(name,t,hold){
+      if(!EXPR[name]) return;
+      setExpr(name,t);
+      exprEndsAt=t+(hold||EXPR[name].dur||CMD_DUR);
+      commandedUntil=exprEndsAt;
+    }
+    function exprMix(px,isLeft,t){
+      const k=clamp01((t-xfadeStart)/XFADE_MS);
+      const cur=EXPR[curExpr].mask(px,isLeft);
+      if(k>=1) return cur;
+      const prev=EXPR[prevExpr].mask(px,isLeft);
+      return prev+(cur-prev)*easeIO(k);
+    }
+    // 唯一真相源：圆角轮廓 + 眨眼，都在这里
+    function lidGain(px, closed){
+      const o = OPEN_O + (CLOSED_O-OPEN_O)*closed;
+      return clamp01((o - px.d)/EDGE + 0.5);
+    }
+
+    // 每只眼的 transform：看左右 + 缩放 + 呼吸 + 微抖（“活着”感）
+    const GAZE_PX=6, BREATHE_PX=1.2, JITTER_PX=0.6, BREATHE_HZ=0.5;
+    function applyEyeTransform(el,t,gaze,scaleY){
+      const bob=BREATHE_PX*Math.sin(2*Math.PI*BREATHE_HZ*t/1000);
+      const jit=JITTER_PX*Math.sin(t/1100+1.7)*Math.sin(t/430);
+      el.style.transform=`translate(${(gaze*GAZE_PX+jit).toFixed(2)}px, ${bob.toFixed(2)}px) scaleY(${scaleY.toFixed(3)})`;
+    }
+
+    // 眨眼 / 连眨 / wink
+    function updateBlink(t){
+      let closed=0;
+      if(!blinking && t>=nextBlink){ blinking=true; blinkStart=t; }
+      if(blinking){
+        const e=t-blinkStart;
+        if(e<CLOSE_MS)                       closed=easeIO(e/CLOSE_MS);
+        else if(e<CLOSE_MS+HOLD_MS)          closed=1;
+        else if(e<CLOSE_MS+HOLD_MS+OPEN_MS)  closed=1-easeIO((e-CLOSE_MS-HOLD_MS)/OPEN_MS);
+        else{
+          blinking=false; closed=0; winkEye=0;
+          const dbl=Math.random()<0.18;                 // 偶尔连眨
+          nextBlink = t + (dbl ? 150 : 2200+Math.random()*3200);
+        }
+      }
+      return closed;
+    }
+    function eyeClosed(closed,isLeftEye){
+      if(winkEye===0) return closed;
+      const winking=(winkEye===-1&&isLeftEye)||(winkEye===1&&!isLeftEye);
+      return winking ? closed : 0;
+    }
+
+    // 表情调度 + 眼↔嘴联动
+    function updateExprScheduler(t){
+      if(t<commandedUntil) return;                                  // 指令/触摸表情期间，随机调度器让位
+      // ① 嘴“激动”时眼睛同步笑眼（带冷却，避免一直挂着）
+      if(accentPulse>0.7 && curExpr==="neutral" && t>nextAccentHappy){
+        setExpr("happy",t); exprEndsAt=t+EXPR.happy.dur; nextAccentHappy=t+4000;
+      }
+      // ② 每 6–12s 在中性时随机来一个表情
+      if(t>=nextExpr && curExpr==="neutral"){
+        if(Math.random()<0.25){
+          winkEye = Math.random()<0.5 ? -1 : 1;          // 单眼 wink
+          blinking=true; blinkStart=t;
+        } else {
+          const pool=["happy","surprise","lookL","lookR"];
+          const name=pool[(Math.random()*pool.length)|0];
+          setExpr(name,t); exprEndsAt=t+EXPR[name].dur;
+        }
+        nextExpr=t+EXPR_MIN_MS+Math.random()*(EXPR_MAX_MS-EXPR_MIN_MS);
+      }
+      // ③ 表情到时回中性
+      if(curExpr!=="neutral" && t>exprEndsAt) setExpr("neutral",t);
+    }
+
+    function updateEyes(t){
+      const closed=updateBlink(t);
+      updateExprScheduler(t);
+      const k=easeIO(clamp01((t-xfadeStart)/XFADE_MS));
+      const gaze=lerp(EXPR[prevExpr].gaze,   EXPR[curExpr].gaze,   k);
+      const scaleY=lerp(EXPR[prevExpr].scaleY, EXPR[curExpr].scaleY, k);
+      applyEyeTransform(eyeLel,t,gaze,scaleY);
+      applyEyeTransform(eyeREl,t,gaze,scaleY);
+      const cl=eyeClosed(closed,true);
+      for(const p of eyeLpx) p.el.style.opacity=(exprMix(p,true,t)*lidGain(p,cl)).toFixed(3);
+      const cr=eyeClosed(closed,false);
+      for(const p of eyeRpx) p.el.style.opacity=(exprMix(p,false,t)*lidGain(p,cr)).toFixed(3);
+    }
+
+    // ================= 主循环 =================
+    function frame(){
+      const t=performance.now();
+      updateEyes(t);
+
+      let drive;
+      if(speaking){                          // 只在 Helen 回复时，嘴才动
+        scheduleSyllable(t);
+        mouthEnv=syllableEnv(t);
+        const breath=BREATH_AMP*(0.5+0.5*Math.sin(2*Math.PI*BREATH_HZ*t/1000));
+        drive=Math.max(mouthEnv, breath);
+      } else {
+        drive=0;                             // 没在回复 → 嘴静止收回
+        nextSyl=t+120;                       // 复位，恢复说话时不炸出一串音节
+        accentPulse=0;
+      }
+      mouthOpen += (drive-mouthOpen)*(drive>mouthOpen?MOUTH_ATTACK:MOUTH_RELEASE);
+      accentPulse *= 0.90;
+      shapeExp   += (tgtShapeExp-shapeExp)*SHAPE_SMOOTH;              // 嘴型平滑形变到新音节的宽窄
+      shapeShift += (tgtShapeShift-shapeShift)*SHAPE_SMOOTH;
+
+      const max=barMaxPx();
+      for(let i=0;i<NUM_BARS;i++){
+        const wob=BAR_NOISE_AMP*Math.sin(2*Math.PI*noiseRate[i]*t/1000+noisePhase[i]);
+        const prof=profileAt(i, shapeExp, shapeShift);
+        const target=clamp01(MIN_FRAC+(1-MIN_FRAC)*prof*(mouthOpen+wob*mouthOpen)); // 噪声随开合缩放
+        const coef=target>heights[i]?ATTACK:RELEASE;
+        heights[i]+=(target-heights[i])*coef;
+        bars[i].style.height=(heights[i]*max).toFixed(2)+"px";
+      }
+      requestAnimationFrame(frame);
+    }
+
+    // 静态一帧（无障碍：减弱动态效果）
+    function renderStatic(){
+      const max=barMaxPx();
+      for(let i=0;i<NUM_BARS;i++){
+        heights[i]=clamp01(MIN_FRAC+(1-MIN_FRAC)*profileAt(i,PROFILE_EXP,0)*0.18);
+        bars[i].style.height=(heights[i]*max).toFixed(2)+"px";
+      }
+      eyeLel.style.transform="none"; eyeREl.style.transform="none";
+      for(const p of eyeLpx) p.el.style.opacity=lidGain(p,0).toFixed(3);
+      for(const p of eyeRpx) p.el.style.opacity=lidGain(p,0).toFixed(3);
+    }
+
+    // ================= 与 voice_pi 的本地通道 =================
+    // voice_pi 推送 {speaking} 门控嘴、{expression} 切表情；点屏回传 {touch} 让 Helen 出声。
+    const NAME_MAP={
+      neutral:"neutral", happy:"happy", sad:"sad", angry:"angry",
+      surprise:"surprise", look_left:"lookL", look_right:"lookR",
+      lookL:"lookL", lookR:"lookR",
+    };
+    const FACE_WS = (location.search.match(/[?&]ws=([^&]+)/)||[])[1] || "ws://127.0.0.1:8765";
+    let ws=null, wsRetry=null;
+    function applyRemoteExpr(name){
+      // Helen 自己/语音指令切的表情：最高优先级，保持到下次改变
+      const n=NAME_MAP[name]; if(n) commandExpr(n, performance.now(), STICK);
+    }
+    function scheduleWS(){
+      if(wsRetry) return;
+      wsRetry=setTimeout(()=>{ wsRetry=null; connectWS(); }, 1500);
+    }
+    function dbg(s){ const el=document.getElementById("dbg"); if(el) el.textContent=s; }
+    function connectWS(){
+      dbg("WS connecting → "+FACE_WS);
+      try{ ws=new WebSocket(decodeURIComponent(FACE_WS)); }
+      catch(e){ dbg("WS construct threw: "+(e&&e.name)+": "+(e&&e.message)); scheduleWS(); return; }
+      ws.onopen=()=>dbg("WS OPEN ✓");
+      ws.onmessage=(ev)=>{
+        dbg("WS msg: "+String(ev.data).slice(0,48));
+        let m; try{ m=JSON.parse(ev.data); }catch(_){ return; }
+        if(m.type==="speaking"){ speaking=!!m.value; }
+        else if(m.type==="expression"){ applyRemoteExpr(m.value); }
+        else if(m.type==="state"){
+          if("speaking" in m) speaking=!!m.speaking;
+          if(m.expression && m.expression!=="neutral") applyRemoteExpr(m.expression);
+        }
+      };
+      ws.onclose=(ev)=>{ speaking=false; dbg("WS closed code="+ev.code+" reason="+(ev.reason||"(none)")); scheduleWS(); };
+      ws.onerror=()=>{ dbg("WS error event"); try{ ws.close(); }catch(_){} };
+    }
+    connectWS();
+
+    // 点屏幕（仅在 Helen 不说话时生效——她说话时表情归她，最高优先级）：
+    //  · 普通单击 → 切表情（保持到下次改变）+ 触摸让 Helen 出声回应
+    //  · 短时间内连点 → 切愤怒脸 + 让 Helen 说英文气话（“别戳我了”）
+    const TAP_CYCLE=["happy","surprise","sad","lookL","lookR"];   // angry 留给连点
+    const RAPID_N=4, RAPID_WIN=1100, ANGRY_LOCK=2000;          // 1.1s 内点满 4 下=连点
+    let tapIdx=0, tapTimes=[], angryUntil=0, lastTouchSend=-1e9;
+
+    function sendTouch(mood){
+      const t=performance.now();
+      if(ws && ws.readyState===1 && t-lastTouchSend>700){
+        lastTouchSend=t;
+        try{ ws.send(JSON.stringify({type:"touch", mood})); }catch(_){}
+      }
+    }
+    window.addEventListener("pointerdown", ()=>{
+      if(speaking) return;                          // Helen 说话时表情归她管，点击不打断
+      const t=performance.now();
+      if(t<angryUntil) return;                      // 刚触发愤怒后的短暂锁定，连点尾巴不误切
+      tapTimes.push(t);
+      tapTimes=tapTimes.filter(x=>t-x<=RAPID_WIN);
+
+      if(tapTimes.length>=RAPID_N){                 // 连点 → 愤怒脸 + 英文气话
+        tapTimes=[]; angryUntil=t+ANGRY_LOCK;
+        commandExpr("angry", t, STICK);
+        sendTouch("annoyed");
+        return;
+      }
+      commandExpr(TAP_CYCLE[tapIdx++ % TAP_CYCLE.length], t, STICK);  // 普通点击：切表情（保持）
+      sendTouch("tap");                             // 触摸 → Helen 出声回应
+    });
+
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if(reduce) renderStatic();
+    else requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
