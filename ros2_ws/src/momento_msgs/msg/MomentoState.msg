@@ -1,0 +1,9 @@
+std_msgs/Header header
+bool connected
+uint8 sys_state
+float32[6] position
+float32[6] velocity
+uint8[6] fault
+uint32 rx_packets
+uint32 tx_packets
+uint32 crc_errors

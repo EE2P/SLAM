@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>momento_bringup</name>
+  <version>0.1.0</version>
+  <description>One-line launch files for Momento control without SLAM</description>
+  <maintainer email="han.li124@imperial.ac.uk">han</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>joy</exec_depend>
+  <exec_depend>momento_xbox</exec_depend>
+  <exec_depend>momento_command_mux</exec_depend>
+  <exec_depend>momento_usb_bridge</exec_depend>
+  <exec_depend>momento_msgs</exec_depend>
+  <exec_depend>follow_bridge</exec_depend>
+  <exec_depend>person_distance</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

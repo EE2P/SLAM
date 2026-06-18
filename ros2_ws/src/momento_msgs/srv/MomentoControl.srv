@@ -1,0 +1,13 @@
+uint8 CMD_NONE=0
+uint8 CMD_ENABLE=1
+uint8 CMD_DISABLE=2
+uint8 CMD_SET_ZERO=3
+uint8 CMD_ARM=4
+uint8 CMD_DISARM=5
+uint8 CMD_CLEAR_FAULT=6
+
+uint8 command
+uint8 joint_idx
+---
+bool accepted
+string message
