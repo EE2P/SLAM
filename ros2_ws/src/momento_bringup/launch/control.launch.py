@@ -26,7 +26,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('serial_port', default_value='/dev/ttyACM0'),
-        DeclareLaunchArgument('default_leg', default_value='0.12'),
+        DeclareLaunchArgument('default_leg', default_value='0.07'),
         DeclareLaunchArgument('cmd_vel_topic', default_value='/cmd_vel'),
         DeclareLaunchArgument('start_joy', default_value='true'),
         DeclareLaunchArgument('start_perception', default_value='true'),

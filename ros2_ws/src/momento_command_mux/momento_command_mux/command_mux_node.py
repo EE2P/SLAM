@@ -20,7 +20,7 @@ class MomentoCommandMux(Node):
         self.declare_parameter('publish_rate_hz', 100.0)
         self.declare_parameter('xbox_timeout_s', 0.25)
         self.declare_parameter('auto_timeout_s', 0.35)
-        self.declare_parameter('default_leg', 0.12)
+        self.declare_parameter('default_leg', 0.07)
 
         self.default_leg = float(self.get_parameter('default_leg').value)
         self.xbox_timeout_s = float(self.get_parameter('xbox_timeout_s').value)

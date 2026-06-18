@@ -48,8 +48,8 @@ class MetricFollowParams:
     FORWARD_GATE_RAD: float = 0.35      # don't drive forward until the target is roughly
                                         # centred -> stops charging a target off to the side
                                         # (the metric twin of follow_law's FORWARD_GATE_PX).
-    MAX_LINEAR: float = 0.6             # m/s forward cap
-    MAX_REVERSE: float = 0.4            # m/s reverse cap (back away when too close)
+    MAX_LINEAR: float = 0.3             # m/s forward cap
+    MAX_REVERSE: float = 0.3            # m/s reverse cap (back away when too close)
     MAX_ANGULAR: float = 1.5            # rad/s yaw cap
     RECOVERY_YAW: float = 0.3           # rad/s gentle search rotation on target loss (the
                                         # bridge applies this; exposed here for one tuning home)

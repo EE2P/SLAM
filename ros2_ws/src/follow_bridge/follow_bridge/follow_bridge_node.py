@@ -54,7 +54,7 @@ class FollowBridgeNode(Node):
         # Chassis sign flips applied at the /cmd_vel boundary, mirroring
         # hailo_follower.py's DRIVE_SIGN/YAW_SIGN. yaw_sign defaults to -1.0 to map the
         # law's "yaw-right-positive" onto REP-103 (+angular.z = left). Confirm on-robot.
-        self.drive_sign = float(self.declare_parameter('drive_sign', 1.0).value)
+        self.drive_sign = float(self.declare_parameter('drive_sign', -1.0).value)
         self.yaw_sign = float(self.declare_parameter('yaw_sign', -1.0).value)
 
         # -- metric follow-law params (one ROS param per MetricFollowParams field) --
