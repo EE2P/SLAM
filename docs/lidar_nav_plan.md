@@ -151,3 +151,45 @@ ros2 launch lidar_nav_bringup bringup.launch.py \
 - 建图→存图→定位模式（给 Nav2 加 `map_server` + `static_layer`）。
 - 跟人加**持久 track id**（在 `person_distance_node` 用 ultralytics `.track()`），
   让 `person_goal_node` 锁定单一目标、不被路人带跑。
+
+---
+
+## 12. RealSense 相机退路（LiDAR 不可用时）—— 包 `rs_nav_bringup`
+
+MID-360 用不了时，用 D455/D435i 单相机也能做 SLAM + 导航，但要认清限制。
+
+**能力与限制**：
+- SLAM：RTAB-Map RGB-D，成熟（沿用 `rs_slam_bringup` 调好的参数）。
+- 导航：**可行，但相机只有前向 ~87°×58° 锥形视野**，对侧面/后方是盲的，深度
+  有效距离有限（D455 ~6m / D435i ~4m）。→ 开慢、别原地盲转。
+
+**为应对窄视野的架构**（与 LiDAR 栈的关键差别）：
+- **全局代价地图 = RTAB-Map 的 2D 栅格 `/rtabmap/map`（static_layer）** —— 用建好的
+  地图“记住”相机当前看不到的障碍。
+- **局部代价地图 = 实时深度点云 `/camera/camera/depth/color/points`（STVL）** —— FOV 内 3D 避障。
+- 速度上限更低（`vx_max:0.4`、`wz_max:0.7`），`PreferForwardCritic` 加权偏向前进。
+
+**TF**：RTAB-Map 以 `frame_id=base_link` 发 `map→odom→base_link`，外加一条
+`static_tf` `base_link→camera_link`（相机内部 optical 帧挂其下）。与 `rs_slam_bringup`
+（用 `camera_link` 当帧）不同，这里专门做了 base_link 以便 Nav2 给“车体”规划。
+
+**文件**：`rs_nav_bringup/{static_tf,rs_slam,nav,bringup}.launch.py` + `config/nav2_params.yaml`
+（相机版）。RTAB-Map 参数复用 `rs_slam_bringup/config/*.yaml`（不重复调参）。
+
+**运行**：
+```bash
+ros2 launch rs_nav_bringup bringup.launch.py                         # 仅 SLAM (D455)
+ros2 launch rs_nav_bringup bringup.launch.py camera_model:=d435i     # D435i
+ros2 launch rs_nav_bringup bringup.launch.py start_nav:=true         # + Nav2
+ros2 launch rs_nav_bringup bringup.launch.py start_nav:=true start_follow:=true  # 跟人
+```
+
+**相机版假设值**（`config/nav2_params.yaml`，上机调）：`robot_radius:0.40`、
+`vx_max:0.4`/`wz_max:0.7`、STVL `obstacle_range:4.0`、`vertical_fov_angle:1.012`(58°)、
+`horizontal_fov_angle:1.518`(87°)、`model_type:0`(深度相机)、`static_layer.map_topic:/rtabmap/map`。
+外参占位 `base_link→camera_link` x=0.12/z=0.20（`static_tf.launch.py`，按实测改）。
+
+**上机注意**：RealSense 须开 `pointcloud.enable`（`rs_slam.launch.py` 已开）才有点云喂 STVL；
+`/rtabmap/map` 是 latched，static_layer 已设 `map_subscribe_transient_local:true`。
+
+**两个栈不同时跑**（各自占用相机/TF）。LiDAR 在用就走 `lidar_nav_bringup`；只有相机就走 `rs_nav_bringup`。
